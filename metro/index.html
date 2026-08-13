@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>서울 지하철</title>
+
+<!-- 홈 화면 앱 설정 -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0B2545">
+<meta name="application-name" content="서울 지하철">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="서울 지하철">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<link rel="icon" href="icon-192.png" sizes="192x192">
+<style>
+  :root{
+    --ink:#111A24;
+    --ink-2:#4A5866;
+    --paper:#EDF0F4;
+    --card:#FFFFFF;
+    --hair:#D5DCE4;
+    --sign:#0B2545;
+    --focus:#1B78E0;
+    --sheet-h:0px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0;overscroll-behavior:none}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex;flex-direction:column;
+    position:fixed;inset:0;
+  }
+
+  /* ── 표지판 헤더 ───────────────────────── */
+  header{
+    background:var(--sign);color:#fff;
+    padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;
+    display:flex;align-items:center;gap:10px;
+    box-shadow:0 1px 0 rgba(0,0,0,.15);
+    z-index:30;
+  }
+  .brand{display:flex;align-items:baseline;gap:7px;flex:0 0 auto}
+  .brand b{font-size:16px;font-weight:800;letter-spacing:-.03em}
+  .brand span{font-size:10px;opacity:.6;letter-spacing:.14em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .searchwrap{flex:1;position:relative;min-width:0}
+  #search{
+    width:100%;height:36px;border:0;border-radius:18px;
+    background:rgba(255,255,255,.14);color:#fff;
+    padding:0 14px 0 34px;font-size:14px;font-family:inherit;
+    outline:2px solid transparent;outline-offset:-2px;
+  }
+  #search::placeholder{color:rgba(255,255,255,.55)}
+  #search:focus{background:rgba(255,255,255,.22);outline-color:#7FB3F0}
+  .mag{position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.6;pointer-events:none}
+  #results{
+    position:absolute;top:42px;left:0;right:0;background:var(--card);
+    border-radius:12px;box-shadow:0 12px 30px rgba(11,37,69,.28);
+    max-height:46vh;overflow:auto;display:none;z-index:40;padding:4px;
+  }
+  #results.on{display:block}
+  .rrow{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:8px;cursor:pointer}
+  .rrow:hover,.rrow[aria-selected="true"]{background:#EEF3F9}
+  .rname{font-size:14px;font-weight:600;color:var(--ink)}
+  .rempty{padding:14px 12px;font-size:13px;color:var(--ink-2)}
+
+  /* ── 노선 배지 ─────────────────────────── */
+  .bdg{
+    width:19px;height:19px;border-radius:50%;flex:0 0 auto;
+    display:inline-flex;align-items:center;justify-content:center;
+    color:#fff;font-size:10.5px;font-weight:800;letter-spacing:-.04em;
+  }
+  .bdg.wide{width:auto;height:19px;padding:0 7px;border-radius:10px;font-size:10px}
+
+  /* ── 지도 ─────────────────────────────── */
+  main{flex:1;position:relative;overflow:hidden;touch-action:none}
+  #map{width:100%;height:100%;display:block;cursor:grab;background:var(--paper)}
+  #map.drag{cursor:grabbing}
+  .rail{fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-width:5.5}
+  .st{pointer-events:auto;cursor:pointer}
+  .dot{fill:#fff;stroke-width:2.2}
+  .dot.minor{stroke-width:2}
+  .lbl{
+    font-size:11.5px;font-weight:650;fill:var(--ink);
+    paint-order:stroke fill;stroke:#EDF0F4;stroke-width:3.4px;stroke-linejoin:round;
+    pointer-events:none;letter-spacing:-.04em;
+  }
+  .st .lbl{display:none}
+  .st.hub .lbl{display:block}
+  svg[data-z="2"] .st.xfer .lbl{display:block}
+  svg[data-z="3"] .st .lbl{display:block}
+  svg[data-z="3"] .lbl{font-size:12px}
+  .st.picked .lbl{display:block;fill:#fff;stroke:var(--sign);stroke-width:4px;font-weight:800}
+  #halo{fill:none;stroke:var(--focus);stroke-width:3;opacity:0;pointer-events:none}
+
+  /* ── 컨트롤 ───────────────────────────── */
+  .zoombar{
+    position:absolute;right:12px;bottom:calc(var(--sheet-h) + 76px);
+    display:flex;flex-direction:column;background:var(--card);
+    border-radius:12px;overflow:hidden;box-shadow:0 3px 14px rgba(17,26,36,.16);
+  }
+  .zoombar button{
+    width:42px;height:42px;border:0;background:transparent;font-size:20px;
+    color:var(--ink);cursor:pointer;font-family:inherit;line-height:1;
+  }
+  .zoombar button:active{background:#E7EDF4}
+  .zoombar button+button{border-top:1px solid var(--hair)}
+  .zoombar button.reset{font-size:12px;font-weight:700;letter-spacing:-.02em}
+
+  .chips{
+    position:absolute;left:0;right:0;bottom:calc(var(--sheet-h) + 10px);
+    display:flex;gap:6px;overflow-x:auto;padding:6px 12px;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  }
+  .chips::-webkit-scrollbar{display:none}
+  .chip{
+    flex:0 0 auto;display:flex;align-items:center;gap:6px;
+    background:var(--card);border:1px solid var(--hair);border-radius:16px;
+    padding:5px 11px 5px 6px;font-size:12px;font-weight:650;color:var(--ink);
+    cursor:pointer;font-family:inherit;letter-spacing:-.03em;
+    box-shadow:0 1px 4px rgba(17,26,36,.08);
+  }
+  .chip .sw{width:14px;height:14px;border-radius:50%}
+  .chip[aria-pressed="false"]{opacity:.42;background:#E4E9EF}
+  .chip.all{padding-left:11px}
+
+  /* ── 역 정보 시트 ─────────────────────── */
+  #sheet{
+    position:absolute;left:0;right:0;bottom:0;background:var(--card);
+    border-radius:18px 18px 0 0;box-shadow:0 -6px 26px rgba(17,26,36,.18);
+    transform:translateY(102%);transition:transform .26s cubic-bezier(.22,.7,.3,1);
+    padding:14px 16px calc(env(safe-area-inset-bottom) + 16px);z-index:20;
+  }
+  #sheet.on{transform:translateY(0)}
+  .sheet-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  #sname{font-size:22px;font-weight:800;letter-spacing:-.045em;margin:0}
+  #ssub{font-size:12px;color:var(--ink-2);margin:3px 0 0}
+  .close{border:0;background:#EEF1F5;width:30px;height:30px;border-radius:50%;font-size:15px;color:var(--ink-2);cursor:pointer;flex:0 0 auto}
+  #slines{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+  .lchip{display:flex;align-items:center;gap:7px;background:#F4F7FA;border-radius:9px;padding:6px 11px 6px 7px;font-size:13px;font-weight:650;letter-spacing:-.03em}
+
+  .note{
+    position:absolute;left:12px;top:10px;background:rgba(255,255,255,.9);
+    border-radius:9px;padding:6px 9px;font-size:10.5px;color:var(--ink-2);
+    line-height:1.45;max-width:52%;box-shadow:0 1px 5px rgba(17,26,36,.1);
+    letter-spacing:-.02em;
+  }
+  @media (max-width:380px){ .note{display:none} }
+  @media (prefers-reduced-motion:reduce){ #sheet{transition:none} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><b>서울 지하철</b><span>METRO</span></div>
+  <div class="searchwrap">
+    <svg class="mag" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2"><circle cx="7" cy="7" r="5"/><path d="M11 11l4 4"/></svg>
+    <input id="search" type="search" placeholder="역 이름 검색" autocomplete="off" enterkeyhint="search">
+    <div id="results" role="listbox"></div>
+  </div>
+</header>
+
+<main>
+  <svg id="map" role="img" aria-label="서울 지하철 노선도">
+    <g id="glines"></g>
+    <g id="gstations"></g>
+    <circle id="halo" r="12"></circle>
+  </svg>
+
+  <p class="note">두 손가락으로 확대하면 모든 역 이름이 나타납니다. 역을 누르면 환승 정보를 볼 수 있어요.</p>
+
+  <div class="zoombar">
+    <button id="zin" aria-label="확대">＋</button>
+    <button id="zout" aria-label="축소">－</button>
+    <button id="zreset" class="reset" aria-label="전체 보기">전체</button>
+  </div>
+
+  <div class="chips" id="chips"></div>
+
+  <section id="sheet" aria-live="polite">
+    <div class="sheet-top">
+      <div>
+        <h2 id="sname">역 이름</h2>
+        <p id="ssub"></p>
+      </div>
+      <button class="close" id="sclose" aria-label="닫기">✕</button>
+    </div>
+    <div id="slines"></div>
+  </section>
+</main>
+
+<script>
+/* ============================================================
+   노선 데이터  [역명, 위도, 경도]
+   ============================================================ */
+const LINES = [
+{id:"1",name:"1호선",badge:"1",color:"#0052A4",paths:[[
+["도봉산",37.6890,127.0465],["도봉",37.6791,127.0450],["방학",37.6664,127.0442],["창동",37.6533,127.0477],["녹천",37.6444,127.0530],["월계",37.6334,127.0583],["광운대",37.6234,127.0614],["석계",37.6148,127.0657],["신이문",37.6011,127.0684],["외대앞",37.5960,127.0660],["회기",37.5894,127.0577],["청량리",37.5800,127.0470],["제기동",37.5781,127.0349],["신설동",37.5754,127.0250],["동묘앞",37.5725,127.0163],["동대문",37.5713,127.0093],["종로5가",37.5709,127.0018],["종로3가",37.5704,126.9919],["종각",37.5701,126.9832],["시청",37.5636,126.9770],["서울역",37.5546,126.9723],["남영",37.5411,126.9713],["용산",37.5299,126.9647],["노량진",37.5140,126.9420],["대방",37.5135,126.9264],["신길",37.5177,126.9176],["영등포",37.5157,126.9073],["신도림",37.5088,126.8912],["구로",37.5031,126.8820],["가산디지털단지",37.4816,126.8825],["독산",37.4663,126.8886],["금천구청",37.4562,126.8956]
+],[
+["구로",37.5031,126.8820],["구일",37.4972,126.8683],["개봉",37.4943,126.8583],["오류동",37.4942,126.8446],["온수",37.4922,126.8232]
+]]},
+
+{id:"2",name:"2호선",badge:"2",color:"#00A84D",paths:[[
+["시청",37.5636,126.9770],["을지로입구",37.5660,126.9820],["을지로3가",37.5662,126.9917],["을지로4가",37.5668,126.9980],["동대문역사문화공원",37.5652,127.0078],["신당",37.5657,127.0179],["상왕십리",37.5644,127.0290],["왕십리",37.5613,127.0374],["한양대",37.5555,127.0435],["뚝섬",37.5472,127.0475],["성수",37.5446,127.0559],["건대입구",37.5404,127.0705],["구의",37.5372,127.0857],["강변",37.5350,127.0947],["잠실나루",37.5203,127.1032],["잠실",37.5133,127.1000],["잠실새내",37.5115,127.0862],["종합운동장",37.5110,127.0736],["삼성",37.5090,127.0630],["선릉",37.5045,127.0490],["역삼",37.5006,127.0365],["강남",37.4979,127.0276],["교대",37.4935,127.0143],["서초",37.4917,127.0078],["방배",37.4814,126.9975],["사당",37.4765,126.9816],["낙성대",37.4770,126.9636],["서울대입구",37.4812,126.9527],["봉천",37.4823,126.9418],["신림",37.4842,126.9297],["신대방",37.4875,126.9133],["구로디지털단지",37.4851,126.9015],["대림",37.4931,126.8955],["신도림",37.5088,126.8912],["문래",37.5177,126.8948],["영등포구청",37.5252,126.8960],["당산",37.5343,126.9026],["합정",37.5497,126.9138],["홍대입구",37.5570,126.9245],["신촌",37.5551,126.9366],["이대",37.5568,126.9463],["아현",37.5573,126.9561],["충정로",37.5599,126.9636],["시청",37.5636,126.9770]
+],[
+["성수",37.5446,127.0559],["용답",37.5615,127.0505],["신답",37.5645,127.0454],["용두",37.5744,127.0374],["신설동",37.5754,127.0250]
+],[
+["신도림",37.5088,126.8912],["도림천",37.5150,126.8818],["양천구청",37.5169,126.8657],["신정네거리",37.5199,126.8524],["까치산",37.5314,126.8465]
+]]},
+
+{id:"3",name:"3호선",badge:"3",color:"#EF7C1C",paths:[[
+["지축",37.6484,126.9139],["구파발",37.6367,126.9184],["연신내",37.6190,126.9210],["불광",37.6103,126.9298],["녹번",37.6008,126.9346],["홍제",37.5891,126.9438],["무악재",37.5822,126.9503],["독립문",37.5745,126.9580],["경복궁",37.5757,126.9738],["안국",37.5765,126.9853],["종로3가",37.5704,126.9919],["을지로3가",37.5662,126.9917],["충무로",37.5613,126.9942],["동대입구",37.5586,127.0055],["약수",37.5544,127.0106],["금호",37.5480,127.0157],["옥수",37.5405,127.0177],["압구정",37.5271,127.0286],["신사",37.5163,127.0203],["잠원",37.5127,127.0113],["고속터미널",37.5049,127.0048],["교대",37.4935,127.0143],["남부터미널",37.4849,127.0161],["양재",37.4844,127.0343],["매봉",37.4869,127.0466],["도곡",37.4909,127.0553],["대치",37.4945,127.0634],["학여울",37.4966,127.0705],["대청",37.4936,127.0794],["일원",37.4834,127.0844],["수서",37.4874,127.1017],["가락시장",37.4926,127.1182],["경찰병원",37.4959,127.1244],["오금",37.5021,127.1284]
+]]},
+
+{id:"4",name:"4호선",badge:"4",color:"#00A5DE",paths:[[
+["당고개",37.6706,127.0810],["상계",37.6600,127.0736],["노원",37.6551,127.0614],["창동",37.6533,127.0477],["쌍문",37.6484,127.0345],["수유",37.6379,127.0256],["미아",37.6265,127.0259],["미아사거리",37.6134,127.0300],["길음",37.6033,127.0250],["성신여대입구",37.5926,127.0163],["한성대입구",37.5883,127.0064],["혜화",37.5822,127.0018],["동대문",37.5713,127.0093],["동대문역사문화공원",37.5652,127.0078],["충무로",37.5613,126.9942],["명동",37.5609,126.9860],["회현",37.5586,126.9784],["서울역",37.5546,126.9723],["숙대입구",37.5455,126.9722],["삼각지",37.5346,126.9732],["신용산",37.5290,126.9648],["이촌",37.5222,126.9744],["동작",37.5029,126.9793],["이수",37.4865,126.9819],["사당",37.4765,126.9816],["남태령",37.4640,126.9892]
+]]},
+
+{id:"5",name:"5호선",badge:"5",color:"#996CAC",paths:[[
+["방화",37.5776,126.8126],["개화산",37.5725,126.8065],["김포공항",37.5623,126.8010],["송정",37.5613,126.8107],["마곡",37.5601,126.8253],["발산",37.5585,126.8375],["우장산",37.5486,126.8362],["화곡",37.5417,126.8402],["까치산",37.5314,126.8465],["신정",37.5248,126.8563],["목동",37.5262,126.8654],["오목교",37.5245,126.8752],["양평",37.5254,126.8853],["영등포구청",37.5252,126.8960],["영등포시장",37.5240,126.9036],["신길",37.5177,126.9176],["여의도",37.5216,126.9243],["여의나루",37.5271,126.9325],["마포",37.5395,126.9459],["공덕",37.5444,126.9515],["애오개",37.5537,126.9568],["충정로",37.5599,126.9636],["서대문",37.5657,126.9666],["광화문",37.5714,126.9767],["종로3가",37.5704,126.9919],["을지로4가",37.5668,126.9980],["동대문역사문화공원",37.5652,127.0078],["청구",37.5601,127.0139],["신금호",37.5546,127.0201],["행당",37.5573,127.0294],["왕십리",37.5613,127.0374],["마장",37.5661,127.0429],["답십리",37.5668,127.0523],["장한평",37.5614,127.0648],["군자",37.5573,127.0796],["아차산",37.5518,127.0899],["광나루",37.5453,127.1035],["천호",37.5385,127.1237],["강동",37.5357,127.1327],["길동",37.5380,127.1425],["굽은다리",37.5453,127.1435],["명일",37.5513,127.1438],["고덕",37.5551,127.1543],["상일동",37.5568,127.1668],["강일",37.5573,127.1755],["미사",37.5613,127.1926],["하남풍산",37.5540,127.2003],["하남시청",37.5445,127.2062],["하남검단산",37.5406,127.2149]
+],[
+["강동",37.5357,127.1327],["둔촌동",37.5279,127.1364],["올림픽공원",37.5163,127.1305],["방이",37.5090,127.1263],["오금",37.5021,127.1284],["개롱",37.4977,127.1349],["거여",37.4948,127.1443],["마천",37.4954,127.1521]
+]]},
+
+{id:"6",name:"6호선",badge:"6",color:"#CD7C2F",paths:[[
+["응암",37.5987,126.9156],["역촌",37.6062,126.9226],["불광",37.6103,126.9298],["독바위",37.6182,126.9314],["연신내",37.6190,126.9210],["구산",37.6120,126.9174],["응암",37.5987,126.9156]
+],[
+["응암",37.5987,126.9156],["새절",37.5910,126.9134],["증산",37.5817,126.9095],["디지털미디어시티",37.5766,126.9010],["월드컵경기장",37.5686,126.8973],["마포구청",37.5637,126.9033],["망원",37.5559,126.9102],["합정",37.5497,126.9138],["상수",37.5478,126.9224],["광흥창",37.5476,126.9317],["대흥",37.5478,126.9422],["공덕",37.5444,126.9515],["효창공원앞",37.5393,126.9613],["삼각지",37.5346,126.9732],["녹사평",37.5346,126.9868],["이태원",37.5345,126.9945],["한강진",37.5395,127.0018],["버티고개",37.5459,127.0072],["약수",37.5544,127.0106],["청구",37.5601,127.0139],["신당",37.5657,127.0179],["동묘앞",37.5725,127.0163],["창신",37.5787,127.0152],["보문",37.5854,127.0192],["안암",37.5863,127.0293],["고려대",37.5904,127.0362],["월곡",37.6018,127.0417],["상월곡",37.6062,127.0480],["돌곶이",37.6104,127.0567],["석계",37.6148,127.0657],["태릉입구",37.6180,127.0752],["화랑대",37.6199,127.0843],["봉화산",37.6178,127.0899],["신내",37.6128,127.1032]
+]]},
+
+{id:"7",name:"7호선",badge:"7",color:"#747F00",paths:[[
+["장암",37.6716,127.0468],["도봉산",37.6890,127.0465],["수락산",37.6784,127.0553],["마들",37.6647,127.0578],["노원",37.6551,127.0614],["중계",37.6446,127.0645],["하계",37.6363,127.0680],["공릉",37.6255,127.0730],["태릉입구",37.6180,127.0752],["먹골",37.6104,127.0774],["중화",37.6023,127.0790],["상봉",37.5961,127.0851],["면목",37.5885,127.0873],["사가정",37.5810,127.0885],["용마산",37.5735,127.0871],["중곡",37.5658,127.0840],["군자",37.5573,127.0796],["어린이대공원",37.5487,127.0743],["건대입구",37.5404,127.0705],["뚝섬유원지",37.5310,127.0668],["청담",37.5195,127.0533],["강남구청",37.5171,127.0413],["학동",37.5142,127.0316],["논현",37.5110,127.0217],["반포",37.5075,127.0117],["고속터미널",37.5049,127.0048],["내방",37.4874,126.9938],["이수",37.4865,126.9819],["남성",37.4844,126.9713],["숭실대입구",37.4960,126.9538],["상도",37.5027,126.9478],["장승배기",37.5049,126.9393],["신대방삼거리",37.4996,126.9276],["보라매",37.4998,126.9204],["신풍",37.5001,126.9098],["대림",37.4931,126.8955],["남구로",37.4861,126.8871],["가산디지털단지",37.4816,126.8825],["철산",37.4761,126.8677],["광명사거리",37.4794,126.8548],["천왕",37.4873,126.8382],["온수",37.4922,126.8232]
+]]},
+
+{id:"8",name:"8호선",badge:"8",color:"#E6186C",paths:[[
+["별내",37.6469,127.1218],["다산",37.6222,127.1620],["동구릉",37.6127,127.1503],["구리",37.6033,127.1443],["장자호수공원",37.5772,127.1416],["암사역사공원",37.5556,127.1354],["암사",37.5501,127.1277],["천호",37.5385,127.1237],["강동구청",37.5304,127.1244],["몽촌토성",37.5175,127.1122],["잠실",37.5133,127.1000],["석촌",37.5051,127.1065],["송파",37.4998,127.1124],["가락시장",37.4926,127.1182],["문정",37.4855,127.1224],["장지",37.4783,127.1262],["복정",37.4703,127.1266],["남위례",37.4600,127.1370],["산성",37.4519,127.1461],["남한산성입구",37.4514,127.1600],["단대오거리",37.4453,127.1553],["신흥",37.4405,127.1476],["수진",37.4373,127.1418],["모란",37.4315,127.1290]
+]]},
+
+{id:"9",name:"9호선",badge:"9",color:"#BB8336",paths:[[
+["개화",37.5783,126.7987],["김포공항",37.5623,126.8010],["공항시장",37.5632,126.8103],["신방화",37.5675,126.8163],["마곡나루",37.5676,126.8296],["양천향교",37.5682,126.8422],["가양",37.5614,126.8543],["증미",37.5578,126.8615],["등촌",37.5506,126.8659],["염창",37.5469,126.8747],["신목동",37.5424,126.8802],["선유도",37.5372,126.8942],["당산",37.5343,126.9026],["국회의사당",37.5285,126.9177],["여의도",37.5216,126.9243],["샛강",37.5175,126.9268],["노량진",37.5140,126.9420],["노들",37.5127,126.9535],["흑석",37.5087,126.9636],["동작",37.5029,126.9793],["구반포",37.5023,126.9884],["신반포",37.5045,126.9955],["고속터미널",37.5049,127.0048],["사평",37.5040,127.0125],["신논현",37.5045,127.0250],["언주",37.5074,127.0342],["선정릉",37.5107,127.0439],["삼성중앙",37.5133,127.0530],["봉은사",37.5145,127.0603],["종합운동장",37.5110,127.0736],["삼전",37.5030,127.0784],["석촌고분",37.5030,127.0955],["석촌",37.5051,127.1065],["송파나루",37.5093,127.1122],["한성백제",37.5148,127.1187],["올림픽공원",37.5163,127.1305],["둔촌오륜",37.5170,127.1385],["중앙보훈병원",37.5262,127.1466]
+]]},
+
+{id:"SB",name:"신분당선",badge:"신분당",wide:true,color:"#D4003B",paths:[[
+["신사",37.5163,127.0203],["논현",37.5110,127.0217],["신논현",37.5045,127.0250],["강남",37.4979,127.0276],["양재",37.4844,127.0343],["양재시민의숲",37.4703,127.0384],["청계산입구",37.4473,127.0555],["판교",37.3948,127.1114],["정자",37.3671,127.1084]
+]]},
+
+{id:"BD",name:"수인·분당선",badge:"분당",wide:true,color:"#F5A200",paths:[[
+["왕십리",37.5613,127.0374],["서울숲",37.5475,127.0442],["압구정로데오",37.5273,127.0405],["강남구청",37.5171,127.0413],["선정릉",37.5107,127.0439],["선릉",37.5045,127.0490],["한티",37.4966,127.0530],["도곡",37.4909,127.0553],["구룡",37.4870,127.0587],["개포동",37.4890,127.0663],["대모산입구",37.4924,127.0723],["수서",37.4874,127.1017],["복정",37.4703,127.1266],["가천대",37.4483,127.1279],["태평",37.4400,127.1290],["모란",37.4315,127.1290]
+]]},
+
+{id:"GJ",name:"경의·중앙선",badge:"경의",wide:true,color:"#77C4A3",paths:[[
+["디지털미디어시티",37.5766,126.9010],["가좌",37.5691,126.9155],["홍대입구",37.5570,126.9245],["서강대",37.5514,126.9354],["공덕",37.5444,126.9515],["효창공원앞",37.5393,126.9613],["용산",37.5299,126.9647],["이촌",37.5222,126.9744],["서빙고",37.5195,126.9884],["한남",37.5290,127.0093],["옥수",37.5405,127.0177],["응봉",37.5494,127.0345],["왕십리",37.5613,127.0374],["청량리",37.5800,127.0470],["회기",37.5894,127.0577],["중랑",37.5947,127.0752],["상봉",37.5961,127.0851],["망우",37.5993,127.0919],["양원",37.6063,127.1069],["구리",37.6033,127.1443]
+]]},
+
+{id:"AR",name:"공항철도",badge:"공항",wide:true,color:"#0090D2",paths:[[
+["서울역",37.5546,126.9723],["공덕",37.5444,126.9515],["홍대입구",37.5570,126.9245],["디지털미디어시티",37.5766,126.9010],["마곡나루",37.5676,126.8296],["김포공항",37.5623,126.8010],["계양",37.5714,126.7358]
+]]},
+
+{id:"UI",name:"우이신설선",badge:"우이",wide:true,color:"#B0CE18",paths:[[
+["북한산우이",37.6633,127.0128],["솔밭공원",37.6567,127.0143],["4·19민주묘지",37.6497,127.0136],["가오리",37.6427,127.0146],["화계",37.6357,127.0166],["삼양",37.6296,127.0182],["삼양사거리",37.6248,127.0177],["솔샘",37.6199,127.0155],["북한산보국문",37.6127,127.0113],["정릉",37.6068,127.0130],["성신여대입구",37.5926,127.0163],["보문",37.5854,127.0192],["신설동",37.5754,127.0250]
+]]},
+
+{id:"SL",name:"신림선",badge:"신림",wide:true,color:"#6789CA",paths:[[
+["샛강",37.5175,126.9268],["대방",37.5135,126.9264],["서울지방병무청",37.5093,126.9257],["보라매",37.4998,126.9204],["보라매공원",37.4959,126.9245],["보라매병원",37.4934,126.9285],["당곡",37.4884,126.9282],["신림",37.4842,126.9297],["서원",37.4808,126.9312],["서울대벤처타운",37.4762,126.9327],["관악산",37.4695,126.9334]
+]]},
+
+{id:"GC",name:"경춘선",badge:"경춘",wide:true,color:"#178C72",paths:[[
+["청량리",37.5800,127.0470],["회기",37.5894,127.0577],["중랑",37.5947,127.0752],["상봉",37.5961,127.0851],["망우",37.5993,127.0919],["신내",37.6128,127.1032],["갈매",37.6386,127.1188],["별내",37.6469,127.1218],["퇴계원",37.6465,127.1435]
+]]}
+];
+
+/* 저배율에서도 항상 보이는 주요 환승 거점 */
+const HUBS = new Set(["서울역","시청","종로3가","을지로3가","왕십리","청량리","신도림","사당","강남","교대","잠실","고속터미널","건대입구","홍대입구","합정","공덕","동대문역사문화공원","충무로","노원","선릉","여의도","당산","천호","가산디지털단지","군자","석계","김포공항","수서","연신내","종합운동장","구로","까치산","대림","신설동","디지털미디어시티","삼각지","온수","오금","모란"]);
+
+/* ============================================================
+   투영 + 노드 구성
+   ============================================================ */
+const K = 4000, LATK = 1.0, LNGK = Math.cos(37.55*Math.PI/180);
+const nodes = new Map();
+function node(name, lat, lng){
+  let n = nodes.get(name);
+  if(!n){
+    n = {name, x:lng*LNGK*K, y:-lat*LATK*K, lines:[], nbr:[], el:null};
+    nodes.set(name, n);
+  }
+  return n;
+}
+LINES.forEach(L=>{
+  L.paths.forEach(p=>{
+    const ns = p.map(s=>node(s[0], s[1], s[2]));
+    ns.forEach((n,i)=>{
+      if(!n.lines.includes(L)) n.lines.push(L);
+      if(i>0) n.nbr.push(ns[i-1]);
+      if(i<ns.length-1) n.nbr.push(ns[i+1]);
+    });
+    L._pts = L._pts || [];
+    L._pts.push(ns);
+  });
+});
+
+/* 라벨 위치: 노선이 가로로 지나면 위쪽, 세로로 지나면 오른쪽 */
+nodes.forEach(n=>{
+  let dx=0, dy=0;
+  n.nbr.forEach(m=>{ dx += Math.abs(m.x-n.x); dy += Math.abs(m.y-n.y); });
+  n.side = (dx > dy*1.1) ? "top" : "right";
+});
+
+/* 화면 좌표계 정규화 */
+let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+nodes.forEach(n=>{minX=Math.min(minX,n.x);maxX=Math.max(maxX,n.x);minY=Math.min(minY,n.y);maxY=Math.max(maxY,n.y)});
+nodes.forEach(n=>{ n.x-=minX; n.y-=minY; });
+const W0 = maxX-minX, H0 = maxY-minY;
+
+/* ============================================================
+   렌더링
+   ============================================================ */
+const svg=document.getElementById("map"), gL=document.getElementById("glines"),
+      gS=document.getElementById("gstations"), halo=document.getElementById("halo");
+const NS="http://www.w3.org/2000/svg";
+const off = new Set();   // 숨긴 노선 id
+
+LINES.forEach(L=>{
+  L._els = L._pts.map(ns=>{
+    const pl=document.createElementNS(NS,"polyline");
+    pl.setAttribute("class","rail");
+    pl.setAttribute("stroke",L.color);
+    pl.setAttribute("vector-effect","non-scaling-stroke");
+    pl.setAttribute("points", ns.map(n=>n.x.toFixed(1)+","+n.y.toFixed(1)).join(" "));
+    gL.appendChild(pl);
+    return pl;
+  });
+});
+
+nodes.forEach(n=>{
+  const g=document.createElementNS(NS,"g");
+  g.setAttribute("class","st"+(n.lines.length>1?" xfer":"")+(HUBS.has(n.name)?" hub":""));
+  const c=document.createElementNS(NS,"circle");
+  const xfer=n.lines.length>1;
+  c.setAttribute("class","dot"+(xfer?"":" minor"));
+  c.setAttribute("r", xfer?5.4:3.6);
+  c.setAttribute("stroke", xfer?"#2B3947":n.lines[0].color);
+  const t=document.createElementNS(NS,"text");
+  t.setAttribute("class","lbl");
+  if(n.side==="top"){ t.setAttribute("text-anchor","middle"); t.setAttribute("y",-9); }
+  else { t.setAttribute("text-anchor","start"); t.setAttribute("x",8.5); t.setAttribute("y",4); }
+  t.textContent=n.name;
+  g.append(c,t);
+  g.addEventListener("click",e=>{e.stopPropagation();select(n)});
+  gS.appendChild(g);
+  n.el=g; n.dotEl=c;
+});
+
+/* ── 뷰 상태 ── */
+let scale=1, tx=0, ty=0, fit=1, needFrame=false;
+function viewport(){ return {w:svg.clientWidth, h:svg.clientHeight}; }
+
+function fitAll(animate){
+  const {w,h}=viewport();
+  fit=Math.min((w-40)/W0,(h-150)/H0);
+  scale=fit;
+  tx=(w-W0*scale)/2;
+  ty=(h-H0*scale)/2;
+  draw();
+}
+function clampScale(s){ return Math.max(fit*0.85, Math.min(fit*14, s)); }
+
+function draw(){
+  gL.setAttribute("transform",`translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${scale.toFixed(4)})`);
+  const z=scale/fit;
+  svg.dataset.z = z<1.7 ? "1" : (z<3.1 ? "2" : "3");
+  const {w,h}=viewport(), m=90;
+  nodes.forEach(n=>{
+    const hidden = n.lines.every(L=>off.has(L.id));
+    if(hidden){ if(n.el.style.display!=="none") n.el.style.display="none"; return; }
+    const sx=n.x*scale+tx, sy=n.y*scale+ty;
+    if(sx<-m||sy<-m||sx>w+m||sy>h+m){ if(n.el.style.display!=="none") n.el.style.display="none"; return; }
+    if(n.el.style.display==="none") n.el.style.display="";
+    n.el.setAttribute("transform",`translate(${sx.toFixed(1)},${sy.toFixed(1)})`);
+  });
+  if(picked){
+    halo.setAttribute("cx",(picked.x*scale+tx).toFixed(1));
+    halo.setAttribute("cy",(picked.y*scale+ty).toFixed(1));
+  }
+}
+function requestDraw(){ if(needFrame) return; needFrame=true; requestAnimationFrame(()=>{needFrame=false; draw();}); }
+
+/* ── 입력: 드래그 / 휠 / 핀치 ── */
+const pts=new Map(); let pinch=null;
+svg.addEventListener("pointerdown",e=>{
+  svg.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  svg.classList.add("drag");
+  if(pts.size===2){
+    const [a,b]=[...pts.values()];
+    pinch={d:Math.hypot(a.x-b.x,a.y-b.y), cx:(a.x+b.x)/2, cy:(a.y+b.y)/2};
+  }
+});
+svg.addEventListener("pointermove",e=>{
+  if(!pts.has(e.pointerId)) return;
+  const prev=pts.get(e.pointerId);
+  pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pts.size===1){
+    tx+=e.clientX-prev.x; ty+=e.clientY-prev.y; requestDraw();
+  } else if(pts.size===2 && pinch){
+    const [a,b]=[...pts.values()];
+    const d=Math.hypot(a.x-b.x,a.y-b.y), cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;
+    const r=svg.getBoundingClientRect();
+    zoomAt(cx-r.left, cy-r.top, d/pinch.d);
+    tx+=cx-pinch.cx; ty+=cy-pinch.cy;
+    pinch={d,cx,cy}; requestDraw();
+  }
+});
+["pointerup","pointercancel","pointerleave"].forEach(ev=>svg.addEventListener(ev,e=>{
+  pts.delete(e.pointerId); if(pts.size<2) pinch=null;
+  if(!pts.size) svg.classList.remove("drag");
+}));
+svg.addEventListener("wheel",e=>{
+  e.preventDefault();
+  const r=svg.getBoundingClientRect();
+  zoomAt(e.clientX-r.left,e.clientY-r.top, Math.exp(-e.deltaY*0.0016));
+  requestDraw();
+},{passive:false});
+svg.addEventListener("click",()=>closeSheet());
+svg.addEventListener("dblclick",e=>{
+  const r=svg.getBoundingClientRect();
+  zoomAt(e.clientX-r.left,e.clientY-r.top,1.8); draw();
+});
+
+function zoomAt(px,py,f){
+  const ns=clampScale(scale*f), k=ns/scale;
+  tx=px-(px-tx)*k; ty=py-(py-ty)*k; scale=ns;
+}
+function zoomCenter(f){ const {w,h}=viewport(); zoomAt(w/2,h/2,f); draw(); }
+document.getElementById("zin").onclick=()=>zoomCenter(1.5);
+document.getElementById("zout").onclick=()=>zoomCenter(1/1.5);
+document.getElementById("zreset").onclick=()=>{picked=null;halo.style.opacity=0;closeSheet();fitAll()};
+
+/* ── 노선 필터 칩 ── */
+const chips=document.getElementById("chips");
+LINES.forEach(L=>{
+  const b=document.createElement("button");
+  b.className="chip"; b.setAttribute("aria-pressed","true");
+  b.innerHTML=`<span class="sw" style="background:${L.color}"></span>${L.name}`;
+  b.onclick=()=>{
+    const on=b.getAttribute("aria-pressed")==="true";
+    b.setAttribute("aria-pressed", on?"false":"true");
+    on?off.add(L.id):off.delete(L.id);
+    L._els.forEach(el=>el.style.display= on?"none":"");
+    draw();
+  };
+  chips.appendChild(b);
+});
+
+/* ── 검색 ── */
+const search=document.getElementById("search"), results=document.getElementById("results");
+const allNames=[...nodes.keys()].sort((a,b)=>a.localeCompare(b,"ko"));
+search.addEventListener("input",()=>{
+  const q=search.value.trim();
+  if(!q){ results.classList.remove("on"); return; }
+  const hit=allNames.filter(n=>n.includes(q)).slice(0,25);
+  results.innerHTML = hit.length
+    ? hit.map(n=>{
+        const nd=nodes.get(n);
+        const b=nd.lines.map(L=>`<span class="bdg${L.wide?" wide":""}" style="background:${L.color}">${L.badge}</span>`).join("");
+        return `<div class="rrow" data-n="${n}" role="option">${b}<span class="rname">${n}</span></div>`;
+      }).join("")
+    : `<div class="rempty">‘${q}’과(와) 일치하는 역이 없습니다.</div>`;
+  results.classList.add("on");
+});
+results.addEventListener("click",e=>{
+  const row=e.target.closest(".rrow"); if(!row) return;
+  goTo(nodes.get(row.dataset.n));
+  results.classList.remove("on"); search.blur();
+});
+search.addEventListener("keydown",e=>{
+  if(e.key==="Enter"){ const f=results.querySelector(".rrow"); if(f){ goTo(nodes.get(f.dataset.n)); results.classList.remove("on"); search.blur(); } }
+  if(e.key==="Escape"){ results.classList.remove("on"); search.blur(); }
+});
+document.addEventListener("click",e=>{ if(!e.target.closest(".searchwrap")) results.classList.remove("on"); });
+
+function goTo(n){
+  const {w,h}=viewport();
+  scale=clampScale(fit*5);
+  tx=w/2-n.x*scale; ty=(h*0.42)-n.y*scale;
+  select(n);
+}
+
+/* ── 역 정보 시트 ── */
+let picked=null;
+const sheet=document.getElementById("sheet"), sname=document.getElementById("sname"),
+      ssub=document.getElementById("ssub"), slines=document.getElementById("slines");
+function select(n){
+  if(picked) picked.el.classList.remove("picked");
+  picked=n; n.el.classList.add("picked");
+  halo.style.opacity=.9;
+  sname.textContent=n.name;
+  ssub.textContent = n.lines.length>1 ? `${n.lines.length}개 노선 환승역` : "일반역";
+  slines.innerHTML=n.lines.map(L=>
+    `<span class="lchip"><span class="bdg${L.wide?" wide":""}" style="background:${L.color}">${L.badge}</span>${L.name}</span>`).join("");
+  sheet.classList.add("on");
+  document.documentElement.style.setProperty("--sheet-h", sheet.offsetHeight+"px");
+  draw();
+}
+function closeSheet(){
+  sheet.classList.remove("on");
+  document.documentElement.style.setProperty("--sheet-h","0px");
+  if(picked){ picked.el.classList.remove("picked"); picked=null; }
+  halo.style.opacity=0;
+}
+document.getElementById("sclose").onclick=e=>{e.stopPropagation();closeSheet()};
+sheet.addEventListener("click",e=>e.stopPropagation());
+
+/* ── 시작 ── */
+addEventListener("resize",()=>{ const z=scale/fit; fitAll(); scale=clampScale(fit*z); draw(); });
+fitAll();
+
+/* 오프라인 실행용 서비스워커 (https 또는 localhost에서만 동작) */
+if("serviceWorker" in navigator){
+  addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+}
+</script>
+</body>
+</html>
