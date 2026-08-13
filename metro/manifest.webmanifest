@@ -1,17 +1,15 @@
 {
-  "name": "서울 지하철",
-  "short_name": "서울 지하철",
-  "description": "서울 수도권 지하철 노선도 — 확대·검색·환승 정보",
-  "lang": "ko",
-  "start_url": "./",
-  "scope": "./",
+  "id": "/tide/metro/",
+  "name": "서울 지하철 노선도",
+  "short_name": "지하철노선도",
+  "start_url": "/tide/metro/",
+  "scope": "/tide/metro/",
   "display": "standalone",
-  "orientation": "any",
-  "background_color": "#0B2545",
-  "theme_color": "#0B2545",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
